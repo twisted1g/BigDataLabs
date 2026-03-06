@@ -1,4 +1,4 @@
-setwd("~/Code/r/stat_analysis")
+setwd("~/Code/r/BigDataLabs/lab2")
 
 library(dplyr)
 
@@ -11,7 +11,7 @@ str(data)
 summary(data)
 
 
-#1
+# 1. вычислить max, min, mean по каждому столбцу
 base_stat <- sapply(data, function(x){ c(max=max(x, na.rm=TRUE), 
                            min=min(x, na.rm=TRUE), 
                            mean=mean(x, na.rm=TRUE))
@@ -20,16 +20,18 @@ base_stat <- sapply(data, function(x){ c(max=max(x, na.rm=TRUE),
 cat("Вывод базовой информации:")
 base_stat
 
-#2
+# 2. подсчитать количество людей, отдавших предпочтение выбранному 
+# элементу >0.7 и <0.3 (составить вектор) 
 cat("Подсчет голосов > 7 за Chrome: ", sum(data[["Google.Chrome"]] > 7, na.rm=TRUE))
 
 cat("Подсчет голосов < 3 за Chrome: ", sum(data[["Google.Chrome"]] < 3, na.rm=TRUE))
 
-#3
+# 3. вывести рейтинг фильмов (книг...)  в списке по убыванию 
 cat("Сортировка среднего рейтинга: ")
 sort(sapply(data, function(x) mean(x, na.rm=TRUE)), decreasing = TRUE )
 
-#4
+# 4. поработать с пропущенными данными: 
+# отработать оба варианта, продемонстрировать результаты.
 cat("Замена na на 0: ")
 data[is.na(data)] <- 0
 data
@@ -38,7 +40,7 @@ data
 #new_data <- na.omit(data)
 #new_data
 
-#5
+# 5. Продемонстрировать выбор строк из таблицы по указанному признаку.
 cat("Выборка строк с оценкой >  5 Chrome: ")
 chrome_users <- data[data[["Google.Chrome"]] > 7,]
 
@@ -46,7 +48,7 @@ sapply(data, function(x) mean=mean(x, na.rm=TRUE)) -
   sapply(chrome_users, function(x) mean=mean(x, na.rm=TRUE)) 
 
 
-#6
+# 6. Построить столбчатую диаграмму оценок (можно сделать разными способами),
 par(mfrow = c(1, 2))
 
 # Столбчатая диаграмма средних значений
@@ -66,7 +68,7 @@ hist(data[["Google.Chrome"]],
      main = "Распределение оценок для Google Chrome",
      xlab = "Оценка",
      ylab = "Частота",
-     col = "lightgreen",
+     col = "lightblue",
      border = "darkgreen")
 
 

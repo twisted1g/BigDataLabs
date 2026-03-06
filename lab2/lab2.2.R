@@ -1,11 +1,17 @@
-setwd("~/Code/r/stat_analysis")
+setwd("~/Code/r/BigDataLabs/lab2")
 library(dplyr)
-library(ggplot2)
 
-readfile <- read.csv("опрос.csv", row.names = "id")
-data <- data.frame(readfile)
+# 1. Выполнить учебный импорт любых таблиц данных из csv-файла и xls-таблицы.
 
-#2
+data <- read.csv("опрос.csv", row.names = "id")
+head(data)
+dim(data)
+
+data[is.na(data)] <- 0
+data
+
+
+# 2. Выполнить дескриптивный анализ данных
 descriptive_stats <- function(x) {
   x_clean <- x[!is.na(x)]
   c(
@@ -23,20 +29,23 @@ descriptive_stats <- function(x) {
   )
 }
 
-mean(data, na.rm=TRUE)
 
 descriptive_results <- sapply(data, descriptive_stats)
 cat("Дескриптивный анализ: ")
 print(round(descriptive_results, 2))
 
-#3
+# 3. Выполнить сортировку наборов данных по выбранному признаку
 cat("Сортировка по признаку")
 sorted_by_chrome <- data[order(data[["Google.Chrome"]], decreasing = TRUE, na.last = TRUE), ]
 
 sorted_by_chrome
 
 
-#4
+# 4. Сформировать отдельные наборы данных по одинаковому признаку 
+# (например, составить subdataset, из студентов, отдавших предпочтение по шкале > 0.7 определенной книге),
+# вывести результат,  выполнить подсчет размерностей новых таблиц,
+# снова выполнить их анализ – гистограмма, боксплот, серединные меры
+
 chrome_users <- subset(data, Google.Chrome > 7)
 cat("Размерность:", dim(chrome_users), "\n")
 cat("Количество:", nrow(chrome_users), "\n")
@@ -49,70 +58,75 @@ print(round(descriptive_results, 2))
 not_chrome_users <- subset(data, Google.Chrome <= 7 | is.na(Google.Chrome))
 not_chrome_users
 
+# Ну по приколу сделал Тест Стъдента для несвязных выборок по конкретному браузеру
+# Можно исследование сделать по большему числу бразуеров
+t.test(chrome_users$Google.Chrome, not_chrome_users$Google.Chrome, var.equal = FALSE)
+t.test(chrome_users$Google.Chrome, not_chrome_users$Google.Chrome, var.equal = TRUE)
 
-par(mfrow = c(1, 3))
+
+# par(mfrow = c(1, 3))
+
+browsers <- colnames(chrome_users)
 
 # Гистограммы
-hist(chrome_users[["Google.Chrome"]],
-     breaks = seq(0, 10, by = 1),
-     main = "Распределение оценок для Google Chrome",
-     xlab = "Оценка",
-     ylab = "Частота",
-     col = "lightgreen",
-     border = "darkgreen")
 
-hist(chrome_users[["Mozilla.Firefox"]],
-     breaks = seq(0, 10, by = 1),
-     main = "Распределение оценок для Mozilla Firefox",
-     xlab = "Оценка",
-     ylab = "Частота",
-     col = "lightgreen",
-     border = "darkgreen")
+par(mfrow = c(1, 5))
 
-hist(chrome_users[["Opera"]],
-     breaks = seq(0, 10, by = 1),
-     main = "Распределение оценок для Opera",
-     xlab = "Оценка",
-     ylab = "Частота",
-     col = "lightgreen",
-     border = "darkgreen")
+lapply(browsers, function(browser) {
+  hist(chrome_users[[browser]],
+       breaks = seq(0, 10, by = 1),
+       main = paste("Распределение оценок для", browser),
+       xlab = "Оценка",
+       ylab = "Частота",
+       col = "lightgreen",
+       border = "darkgreen")
+})
 
+lapply(browsers, function(browser) {
+  hist(not_chrome_users[[browser]],
+       breaks = seq(0, 10, by = 1),
+       main = paste("Распределение оценок для", browser),
+       xlab = "Оценка",
+       ylab = "Частота",
+       col = "pink",
+       border = "darkred")
+})
 
 # Боксплоты
 
-boxplot(chrome_users[["Google.Chrome"]],
+par(mfrow = c(1, 5))
+lapply(browsers, function(browser) {
+  boxplot(chrome_users[[browser]],
         las = 2,
-        col = "red",
+        col = "blue",
         ylab = "Оценка",
         ylim = c(0, 10),
-        xlab = "Google.Chrome")
+        xlab = browser)
+})
 
-boxplot(chrome_users[["Mozilla.Firefox"]],
+par(mfrow = c(1, 5))
+lapply(browsers, function(browser) {
+  boxplot(chrome_users[[browser]],
         las = 2,
-        col = "red",
+        col = "purple",
         ylab = "Оценка",
         ylim = c(0, 10),
-        xlab = "Mozilla.Firefox")
-
-
-boxplot(chrome_users[["Opera"]],
-        las = 2,
-        col = "red",
-        ylab = "Оценка",
-        ylim = c(0, 10),
-        xlab = "Mozilla.Firefox")
+        xlab = browser)
+})
 
 par(mfrow = c(1, 1))
 
-
-#5
+# 5. Продемонстрировать: слияние таблиц, 
+# добавление строк, исключение переменных,
+# формирование части из целого набора данных - подмножество (subset),
+# умение загрузить данные их внешнего файла.
 data1  <- read.csv("опрос.csv")
 data2 <- read.csv("доп_опрос.csv")
 
 cat("Cлияние: ")
-# merged_data <- merge(data, data2, by = "id", all = TRUE) # full
-merged_data <- merge(data, data2, by = "id", all.x = TRUE) # left
-# merged_data <- merge(data, data2, by = "id", all.y = TRUE) # right
+merged_data <- merge(data1, data2, by = "id", all = TRUE) # full
+# merged_data <- merge(data1, data2, by = "id", all.x = TRUE) # left
+# merged_data <- merge(data1, data2, by = "id", all.y = TRUE) # right
 dim(merged_data)
 head(merged_data)
 
@@ -128,7 +142,7 @@ new_row <- data.frame(
 missing_cols <- setdiff(names(data), names(new_row))
 new_row[missing_cols] <- NA
 
-data_extended <- rbind(data, new_row)
+data_extended <- rbind(data1, new_row)
 
 dim(data_extended)
 tail(data_extended)
