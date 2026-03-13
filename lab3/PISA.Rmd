@@ -1,20 +1,42 @@
+---
+title: "PISA"
+output: html_document
+---
+
+```{r}
+# install.packages("learningtower")
+# library(learningtower)
+# 
+# students_data <- load_student("all")
+# students_data
+# 
+# saveRDS(students_data, "students_data.rds")
+```
+
+```{r}
 library(learningtower)
 library(dplyr)
 library(zoo)
 
 setwd("~/Code/r/BigDataLabs/lab3")
-# 1. Выбрать данные согласно варианту по указанным 7-ми странам, освободить от NA.
+```
 
+## 1. Выбрать данные согласно варианту по указанным 7-ми странам, освободить от NA.
+
+```{r}
 students_data <- readRDS("./students_data.rds")
 students_data
+```
 
-# Подготовка данных
-# "China"и "India" 
+Подготовим данные для анализа.
 
+Для стран: Китай, Индия нет определенного идентификатора. Для этих стран определены только области с уточнением принадлежности к стране. Зменим их на название страны.
+
+```{r}
 new_students_data <- left_join(students_data, countrycode, 
                                by = c("country" = "country"))
 
-length(unique(new_students_data$country_name))
+cat("Кол-во регионов до импутации:",length(unique(new_students_data$country_name)))
 
 new_students_data$country_name[grepl("China",
                 new_students_data$country_name) ] <- "China"
@@ -22,8 +44,10 @@ new_students_data$country_name[grepl("China",
 new_students_data$country_name[grepl("India",
                 new_students_data$country_name) ] <- "India"
 
-length(unique(new_students_data$country_name))
+cat("\nКол-во регионов после импутации:", length(unique(new_students_data$country_name)))
+```
 
+```{r}
 countries <- c(
   "Australia",
   "Japan",
@@ -35,13 +59,21 @@ countries <- c(
   "Greece"
 )
 
-# Выборка по странам
 students <- new_students_data %>%
   filter(country_name %in% countries)
 
-unique(students$country_name)
+cat("Страны в выборке:", paste(unique(students$country_name), collapse = ", "))
+```
 
-# Удаление na
+В даннных есть пропуски. Ниже предлагаются несколько способов по обработке пропусков.
+
+Самое базовое - оставить na
+
+Удаление na.
+
+На графиках появляются разрывы.
+
+```{r}
 # students <- students %>%
 #   filter(
 #     !is.na(math),
@@ -49,15 +81,24 @@ unique(students$country_name)
 #     !is.na(science),
 #     !is.na(computer_n)
 #   )
+```
 
-# Так получилось точнее, но есть выбросы
-# students$math[is.na(students$math)] <- 0
-# students$read[is.na(students$read)] <- 0
-# students$science[is.na(students$science)] <- 0
-# students$computer_n[is.na(students$computer_n)] <- 0
+Импутация
 
+Появляются выбросы. Можно убрать (это ниже), т.к. данные распередены нормально
 
-# Линейная интерполяция
+```{r}
+students$math[is.na(students$math)] <- 0
+students$read[is.na(students$read)] <- 0
+students$science[is.na(students$science)] <- 0
+students$computer_n[is.na(students$computer_n)] <- 0
+```
+
+Линейная интерполяция
+
+С одной стороны самый логичный способ. Но из-за этого нарушается распределение данных
+
+```{r}
 # library(zoo)
 # 
 # safe_approx <- function(x, year) {
@@ -67,7 +108,7 @@ unique(students$country_name)
 #     error = function(e) x  # при любой ошибке возвращаем оригинал
 #   )
 # }
-# 
+
 # students <- students %>%
 #   arrange(country_name, year) %>%
 #   group_by(country_name) %>%
@@ -77,71 +118,61 @@ unique(students$country_name)
 #     science = safe_approx(science, year),
 #   ) %>%
 #   ungroup()
+```
 
+## 2. Подсчет средних оценок по трем признакам для каждого года.
 
-# 2. Выполнить подсчет средних оценок по трем признакам для каждого года.
-
+```{r}
 mean_scores <- students %>% 
   group_by(country_name, year) %>%
   summarise(
-    mean_math = mean(math),
-    mean_read = mean(read),
-    mean_science = mean(science),
+    mean_math = mean(math, na.rm = TRUE),
+    mean_read = mean(read, na.rm = TRUE),
+    mean_science = mean(science, na.rm = TRUE),
     .groups = "drop"
   )
 
 mean_scores
+```
 
-# 3. Вывести графики динамики изменения средней оценки по трем параметрам – математика,
-# чтение и наука (функциональные графики с легендой), столбчатую диаграмму для сравнения
-# средних оценок (математика, чтение и наука) по одной и той же стране в крайний год в
-# выборке.
+## 3. Графики динамики изменения средних оценок и столбчатые диаграммы.
 
+Для каждой страны построим графики изменения средних оценок по математике, чтению и науке по годам, а также столбчатую диаграмму за крайний год.
 
-for (country in countries){
-  # Графики средних оценок по годам
+```{r, fig.width=9, fig.height=5}
+for (country in countries) {
   country_data <- mean_scores %>%
     filter(country_name == country)
-  
-  y_min <- min(c(country_data$mean_math,
-                country_data$mean_read,
-                country_data$mean_science), na.rm = TRUE) * 0.95
 
+  y_min <- min(c(country_data$mean_math,
+                 country_data$mean_read,
+                 country_data$mean_science), na.rm = TRUE) * 0.95
   y_max <- max(c(country_data$mean_math,
-                country_data$mean_read,
-                country_data$mean_science), na.rm = TRUE) * 1.05
-  
+                 country_data$mean_read,
+                 country_data$mean_science), na.rm = TRUE) * 1.05
+
   plot(country_data$year, country_data$mean_math,
-       type = "b",
-       lty = 5,
-       col = "blue",
-       ylim = c(y_min, y_max) ,
-       xlab = "Год",
-       ylab = "Средние оценки",
-       main = country,
-       axes = FALSE)
-  
-  axis(1, at=country_data$year, las=1)
-  
-  axis(2, at = pretty(c(y_min, y_max), n=8), las = 1)
-  
-  lines(country_data$year, country_data$mean_read, 
+       type = "b", lty = 5, col = "blue",
+       ylim = c(y_min, y_max),
+       xlab = "Год", ylab = "Средние оценки",
+       main = country, axes = FALSE)
+
+  axis(1, at = country_data$year, las = 1)
+  axis(2, at = pretty(c(y_min, y_max), n = 8), las = 1)
+
+  lines(country_data$year, country_data$mean_read,
         col = "red", type = "b", lty = 5)
-  
-  lines(country_data$year, country_data$mean_science, 
+  lines(country_data$year, country_data$mean_science,
         col = "green", type = "b", lty = 5)
-  
+
   legend("topright",
          legend = c("Математика", "Чтение", "Наука"),
          col = c("blue", "red", "green"),
-         pch = 1,
-         lty = 5)
+         pch = 1, lty = 5)
 
-# Столбчатые диаграммы за последний год
-    
   year_country_data <- country_data %>%
-      filter(year == max(year))
-  
+    filter(year == max(year))
+
   bp <- barplot(c(year_country_data$mean_math,
                   year_country_data$mean_read,
                   year_country_data$mean_science),
@@ -149,20 +180,20 @@ for (country in countries){
                 col = c("blue", "red", "green"),
                 ylab = "Средние оценки",
                 ylim = c(0, y_max),
-                main = paste("Средние оценки в", country, "за", 
+                main = paste("Средние оценки в", country, "за",
                              max(year_country_data$year), "год"),
-                width = 0.6,
-                space = 0.8,
-                axes = FALSE)
-  
+                width = 0.6, space = 0.8, axes = FALSE)
+
   axis(1, at = bp, labels = c("Математика", "Чтение", "Наука"))
   axis(2, at = pretty(c(0, y_max), n = 8), las = 1)
 }
+```
 
+## 4. Круговая диаграмма средних оценок по полу.
 
-# 4. Разделить датасет по гендерному признаку, построить круговую диаграмму (pie) средних по
-# трем признакам для мужчин и женщин (шесть долек) подписями и легендой.
+Разделим датасет по гендерному признаку и построим круговую диаграмму средних оценок по трём признакам для мужчин и женщин (шесть долек).
 
+```{r}
 gender_counts <- table(students$gender)
 percent <- round(gender_counts / sum(gender_counts) * 100, 1)
 
@@ -170,9 +201,12 @@ pie(gender_counts,
     labels = paste(names(gender_counts), percent, "%"),
     col = c("lightblue", "pink"),
     main = "Распределение студентов по полу")
+    
+```
 
-# 5. Построить по одной гистограмме распределений оценок по математике для мужчин для
-#женщин.
+## 5. Гистограммы распределений оценок по математике, чтению и науке для мужчин и женщин.
+
+```{r, fig.width=12, fig.height=5}
 par(mfrow = c(1,2))
 for (subj in subjects <- c("math", "read", "science")){
   subj
@@ -187,10 +221,11 @@ for (subj in subjects <- c("math", "read", "science")){
        col = "pink")
 }
 par(mfrow = c(1,1))
+```
 
-# Данные распределены нормально, но есть выбросы. 
-# По правилу трех сигм отсеиваем выбросы
+Данные распределены нормально, однако присутствуют выбросы. Применим правило трёх сигм для их удаления.
 
+```{r}
 mean_math <- mean(students$math, na.rm = TRUE)
 sd_math <- sd(students$math, na.rm = TRUE)
 
@@ -200,6 +235,8 @@ sd_read <- sd(students$read, na.rm = TRUE)
 mean_science <- mean(students$science, na.rm = TRUE)
 sd_science <- sd(students$science, na.rm = TRUE)
 
+cat("Размер датасета до удаления выбросов:", nrow(students))
+
 students <- students %>%
   filter(
     math >= mean_math - 3*sd_math & math <= mean_math + 3*sd_math,
@@ -207,18 +244,21 @@ students <- students %>%
     science >= mean_science - 3*sd_science & science <= mean_science + 3*sd_science
   )
 
+cat("\nРазмер датасета после удаления выбросов:", nrow(students))
+```
 
+## 6. Сопоставление динамики изменения оценок по странам.
 
-# 6. Построить в одной плоскости графики по 7-ми заданным странам (в моем примере сделано по
-# двум) для сопоставления динамики изменение способностей учеников в разных странах.
+Построим в одной плоскости графики по всем странам для каждого предмета.
 
+```{r, fig.width=10, fig.height=6}
 colors <- rainbow(length(countries))
 
 for (subj in c("math", "read", "science")) {
   plot(NULL,
        xlim = range(mean_scores$year),
        ylim = c(min(mean_scores$mean_math, mean_scores$mean_read, mean_scores$mean_science),
-                max(mean_scores$mean_math, mean_scores$mean_read, mean_scores$mean_science) * 1.1),
+                max(mean_scores$mean_math, mean_scores$mean_read, mean_scores$mean_science) * 1.15),
        xlab = "Год",
        ylab = "Средние оценки",
        main = paste("Динамика оценок по", subj, "по странам"),
@@ -244,23 +284,32 @@ for (subj in c("math", "read", "science")) {
          pch = seq_along(countries),
          ncol = 2)
 }
+```
 
+## 7. Среднее количество компьютеров у учащихся: первый, средний и последний год.
 
-# 7. Выполните подсчет среднего количества компьютеров у учащихся в первом в вашей выборке
-# году, последнем и в середине выборки, постройте круговую диаграмму.
+Подсчитаем среднее количество компьютеров для трёх временных точек по каждой стране и построим круговые диаграммы.
 
+Для начала обработаем категориальный признак computer_n.
+
+```{r}
 unique(students$computer_n)
-
-# Среднее количество особо не меняется для разных способов обработки na
-# students <- students %>%
-#   filter(!is.na(computer_n))
 
 students$computer_n <- as.numeric(as.character(
   recode(as.character(students$computer_n), "3+" = "3")
 ))
 
-students
+unique(students$computer_n)
+```
 
+Среднее количество особо не меняется для разных способов обработки na
+
+```{r}
+# students <- students %>%
+#   filter(!is.na(computer_n))
+```
+
+```{r, fig.width=7, fig.height=5}
 
 for (country_full in countries) {
   country_data <- students %>%
@@ -285,4 +334,4 @@ for (country_full in countries) {
       col = c("steelblue", "orange", "lightgreen")[1:nrow(avg_computers)],
       main = paste("Среднее количество компьютеров в", country_full))
 }
-
+```
