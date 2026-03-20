@@ -120,6 +120,42 @@ students$computer_n[is.na(students$computer_n)] <- 0
 #   ungroup()
 ```
 
+```{r, fig.width=12, fig.height=5}
+par(mfrow = c(1,1))
+for (subj in subjects <- c("math", "read", "science")){
+  subj
+  hist(students[[subj]],
+       main = paste("Распределение оценок по", subj),
+       xlab = "Оценка",
+       col = "lightgreen")
+}
+par(mfrow = c(1,1))
+```
+
+Данные распределены нормально, однако присутствуют выбросы. Применим правило трёх сигм для их удаления.
+
+```{r}
+mean_math <- mean(students$math, na.rm = TRUE)
+sd_math <- sd(students$math, na.rm = TRUE)
+
+mean_read <- mean(students$read, na.rm = TRUE)
+sd_read <- sd(students$read, na.rm = TRUE)
+
+mean_science <- mean(students$science, na.rm = TRUE)
+sd_science <- sd(students$science, na.rm = TRUE)
+
+cat("Размер датасета до удаления выбросов:", nrow(students))
+
+students <- students %>%
+  filter(
+    math >= mean_math - 3*sd_math & math <= mean_math + 3*sd_math,
+    read >= mean_read - 3*sd_read & read <= mean_read + 3*sd_read,
+    science >= mean_science - 3*sd_science & science <= mean_science + 3*sd_science
+  )
+
+cat("\nРазмер датасета после удаления выбросов:", nrow(students))
+```
+
 ## 2. Подсчет средних оценок по трем признакам для каждого года.
 
 ```{r}
@@ -223,30 +259,6 @@ for (subj in subjects <- c("math", "read", "science")){
 par(mfrow = c(1,1))
 ```
 
-Данные распределены нормально, однако присутствуют выбросы. Применим правило трёх сигм для их удаления.
-
-```{r}
-mean_math <- mean(students$math, na.rm = TRUE)
-sd_math <- sd(students$math, na.rm = TRUE)
-
-mean_read <- mean(students$read, na.rm = TRUE)
-sd_read <- sd(students$read, na.rm = TRUE)
-
-mean_science <- mean(students$science, na.rm = TRUE)
-sd_science <- sd(students$science, na.rm = TRUE)
-
-cat("Размер датасета до удаления выбросов:", nrow(students))
-
-students <- students %>%
-  filter(
-    math >= mean_math - 3*sd_math & math <= mean_math + 3*sd_math,
-    read >= mean_read - 3*sd_read & read <= mean_read + 3*sd_read,
-    science >= mean_science - 3*sd_science & science <= mean_science + 3*sd_science
-  )
-
-cat("\nРазмер датасета после удаления выбросов:", nrow(students))
-```
-
 ## 6. Сопоставление динамики изменения оценок по странам.
 
 Построим в одной плоскости графики по всем странам для каждого предмета.
@@ -334,4 +346,38 @@ for (country_full in countries) {
       col = c("steelblue", "orange", "lightgreen")[1:nrow(avg_computers)],
       main = paste("Среднее количество компьютеров в", country_full))
 }
+```
+
+## Дополнительный анализ
+
+Рассмотрим кореляцию между уровнем достатка семьи и средним баллом студента.
+
+Для этог посчитаем коэффициент корреляции Пирса.
+
+```{r}
+students_avg <- students %>%
+  mutate(average_score = (math + read + science) / 3) %>%
+  select(year, country_name, wealth, average_score)
+
+students_avg <- students_avg %>% 
+  filter(!is.na(wealth), !is.na(average_score))
+
+cor(students_avg$average_score, students_avg$wealth)
+cor.test(students_avg$average_score, students_avg$wealth)
+
+```
+
+Наглядно отобразим распределение значений и линию регрессии.
+
+```{r}
+plot(students_avg$wealth, students_avg$average_score,
+     xlab = "Достаток",
+     ylab = "Средний балл",
+     main = "Корреляция",
+     pch = 19,
+     col = "blue",
+     cex = 0.2)
+     
+abline(lm(average_score ~ wealth, data = students_avg), 
+       col = "red", lwd = 2)
 ```
