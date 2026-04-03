@@ -2,3 +2,7 @@
 .Rhistory
 *.RData
 lab3/students_data.rds
+cian_apartments_krd.csv
+
+.idea
+.vscode

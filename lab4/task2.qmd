@@ -1,12 +1,6 @@
 ---
 title: "Лабораторная работа 4. Музеи Санкт-Петербурга"
-format:
-  html:
-    toc: true
-    number-sections: true
-execute:
-  warning: false
-  message: false
+output: html_document
 ---
 
 ## Цель работы
@@ -23,9 +17,6 @@ execute:
 ## Подготовка
 
 ```{r}
-#| label: setup
-#| include: false
-
 # install.packages("rvest")
 
 library(rvest)
@@ -40,18 +31,17 @@ library(knitr)
 В качестве источника берем страницу со списком музеев Санкт-Петербурга.
 
 ```{r}
-#| label: load-page
+page_nums <- 1:5
 
-page_num <- 1
+page_urls <- vapply(page_nums, function(page_num) {
+  if (page_num == 1) {
+    "https://tonkosti.ru/Музеи_Санкт-Петербурга"
+  } else {
+    paste0("https://tonkosti.ru/Музеи_Санкт-Петербурга?page=", page_num)
+  }
+}, character(1))
 
-page_url <- if (page_num == 1) {
-  "https://tonkosti.ru/Музеи_Санкт-Петербурга"
-} else {
-  paste0("https://tonkosti.ru/Музеи_Санкт-Петербурга?page=", page_num)
-}
-
-page <- read_html(page_url)
-page
+pages <- lapply(page_urls, read_html)
 ```
 
 ## Извлечение данных
@@ -64,9 +54,7 @@ page
 -   пытаемся найти описание;
 -   если описания нет, ставим `NA`.
 
-```{r}
-#| label: extract-data
-
+```{r, results="asis"}
 clean_text <- function(x) {
   x <- str_squish(x)
   x <- x[nzchar(x)]
@@ -106,50 +94,73 @@ get_item_block <- function(link_node) {
     return(li_node)
   }
 
-  # Если структура страницы изменится, используем ближайшего общего родителя.
   xml_parent(xml_parent(link_node))
 }
 
-title_links <- html_elements(page, "h3 a")
-titles <- html_text2(title_links) |> clean_text()
-hrefs <- html_attr(title_links, "href")
-hrefs <- url_absolute(hrefs, page_url)
-
-museum_rows <- lapply(seq_along(title_links), function(i) {
-  link_node <- title_links[[i]]
-  block_node <- get_item_block(link_node)
-
-  block_text <- html_text2(block_node)
-  lines <- str_split(block_text, "\n", simplify = FALSE)[[1]] |> clean_text()
-
-  title_pos <- match(titles[i], lines)
-  if (is.na(title_pos)) {
-    title_pos <- grep(titles[i], lines, fixed = TRUE)[1]
-  }
-
-  address <- extract_address(lines[seq_len(max(1, title_pos - 1))])
-  description <- extract_description(lines, title_pos)
-
-  data.frame(
-    museum_name = titles[i],
-    address = address,
-    description = description,
-    museum_link = hrefs[i],
-    stringsAsFactors = FALSE
+parse_page <- function(page, page_url) {
+  title_links <- html_elements(page, "h3 a")
+  titles <- html_text2(title_links) |> clean_text()
+  hrefs <- html_attr(title_links, "href")
+  hrefs <- if_else(
+    is.na(hrefs),
+    NA_character_,
+    if_else(
+      str_detect(hrefs, "^https?://"),
+      hrefs,
+      paste0("https://tonkosti.ru", hrefs)
+    )
   )
+
+  item_nodes <- lapply(title_links, get_item_block)
+
+  museum_rows <- lapply(seq_along(item_nodes), function(i) {
+    node <- item_nodes[[i]]
+
+    address <- html_element(node, ".poster__addr") |>
+      html_text2() |>
+      str_squish()
+
+    description <- html_element(node, ".poster__text") |>
+      html_text2() |>
+      str_squish()
+
+    if (!nzchar(address)) address <- NA_character_
+    if (!nzchar(description)) description <- NA_character_
+
+    data.frame(
+      museum_name = titles[i],
+      address = address,
+      description = description,
+      museum_link = hrefs[i],
+      stringsAsFactors = FALSE
+    )
+  })
+
+  bind_rows(museum_rows)
+}
+
+page_rows <- lapply(seq_along(pages), function(i) {
+  parse_page(pages[[i]], page_urls[i])
 })
 
-museums_df <- bind_rows(museum_rows) %>%
+museums_df <- bind_rows(page_rows) %>%
   distinct(museum_name, .keep_all = TRUE)
 
-museums_df
+museums_df <- museums_df %>%
+  mutate(
+    museum_name = if_else(
+      is.na(museum_link),
+      museum_name,
+      paste0("<a href=\"", museum_link, "\">", museum_name, "</a>")
+    )
+  )
+
+# knitr::kable(museums_df, format = "html", escape = FALSE)
 ```
 
 ## Краткая проверка
 
 ```{r}
-#| label: summary
-
 cat("Найдено музеев:", nrow(museums_df), "\n")
 cat("Заполненных описаний:", sum(!is.na(museums_df$description)), "\n")
 ```
@@ -157,8 +168,6 @@ cat("Заполненных описаний:", sum(!is.na(museums_df$descriptio
 ## Таблица
 
 ```{r}
-#| label: table-output
-
 kable(
   museums_df,
   caption = "Музеи Санкт-Петербурга со страницы tonkosti.ru"

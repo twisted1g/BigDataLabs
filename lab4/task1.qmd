@@ -1,17 +1,13 @@
 ---
 title: "Лабораторная работа 4. Рейтинг стран по уровню жизни"
-format:
-  html:
-    toc: true
-    number-sections: true
-execute:
-  warning: false
-  message: false
+output: html_document
 ---
 
 ## Цель работы
 
-В этой работе собираются исторические данные о качестве жизни стран мира с сайта Numbeo за период с 2014 года до текущего года.
+Научиться работать извлекать информацию с WEB-страниц с помощью инструментов языка R.
+
+В этой работе собираются исторические данные о качестве жизни стран мира с сайта Numbeo за период с 2014 года до текущего го.
 
 Нужно:
 
@@ -42,9 +38,6 @@ execute:
 ## Подготовка
 
 ```{r}
-#| label: setup
-#| include: false
-
 #install.packages("rvest")
 
 library(rvest)
@@ -55,13 +48,10 @@ library(knitr)
 ```
 
 ```{r}
-#| label: params
-
 base_url <- "https://www.numbeo.com/quality-of-life/rankings_by_country.jsp?title=%s"
 current_year <- as.integer(format(Sys.Date(), "%Y"))
 years <- 2014:current_year
 
-# По варианту берем 5 стран из списка.
 selected_countries <- c("Australia", "Japan", "China", "India", "Indonesia")
 
 indicator_cols <- c(
@@ -111,8 +101,6 @@ indicator_vars_ru <- unname(indicator_labels_ru)
 Считываем таблицу с Numbeo по каждому году. Для этого используется `rvest::read_html()` и `rvest::html_table()`.
 
 ```{r}
-#| label: read-data
-
 read_numbeo_year <- function(year) {
   url <- sprintf(base_url, year)
 
@@ -210,8 +198,6 @@ head(all_data)
 ```
 
 ```{r}
-#| label: availability
-
 cat("Загружены годы: ", paste(available_years, collapse = ", "), "\n")
 cat("Всего строк в общей таблице: ", nrow(all_data), "\n")
 ```
@@ -219,8 +205,6 @@ cat("Всего строк в общей таблице: ", nrow(all_data), "\n"
 ## Выборка по 5 странам
 
 ```{r}
-#| label: selected-data
-
 selected_data <- all_data %>%
   filter(country %in% selected_countries) %>%
   arrange(country, year)
@@ -233,8 +217,6 @@ selected_data
 ```
 
 ```{r}
-#| label: missing-countries
-
 missing_countries <- setdiff(selected_countries, unique(selected_data$country))
 if (length(missing_countries) > 0) {
   cat("Страны, которые не удалось найти хотя бы в одном году: ",
@@ -249,8 +231,6 @@ if (length(missing_countries) > 0) {
 В таблице ниже показано изменение позиции в рейтинге и индекса качества жизни от первого доступного года к последнему.
 
 ```{r}
-#| label: rank-summary
-
 rank_summary <- selected_data %>%
   group_by(country) %>%
   arrange(year, .by_group = TRUE) %>%
@@ -271,8 +251,6 @@ kable(rank_summary, caption = "Изменение рейтинга и качес
 ```
 
 ```{r}
-#| label: rank-comment
-
 best_rank <- rank_summary %>% slice_max(rank_change, n = 1, with_ties = FALSE)
 worst_rank <- rank_summary %>% slice_min(rank_change, n = 1, with_ties = FALSE)
 
@@ -321,8 +299,6 @@ ggplot(selected_data, aes(x = year, y = rank_source, color = country, group = co
 Дополнительно полезно отдельно смотреть общий `Quality of Life Index`.
 
 ```{r}
-#| label: qol-plot
-
 ggplot(selected_data, aes(x = year, y = quality_of_life, color = country, group = country)) +
   geom_line(linewidth = 1) +
   geom_point(size = 2) +
@@ -341,8 +317,6 @@ ggplot(selected_data, aes(x = year, y = quality_of_life, color = country, group 
 Для всех индикаторов удобнее всего использовать фасетный график: у каждого показателя своя шкала, поэтому графики не мешают друг другу.
 
 ```{r}
-#| label: long-data
-
 make_long_block <- function(data, var, label) {
   data.frame(
     year = data$year,
@@ -372,31 +346,31 @@ head(indicator_long, 20)
 ```
 
 ```{r}
-#| label: indicators-plot
-
-ggplot(indicator_long, aes(x = year, y = value, color = country, group = country)) +
-  geom_line(linewidth = 0.9) +
-  geom_point(size = 1.5) +
-  facet_wrap(~ indicator, scales = "free_y", ncol = 2) +
-  labs(
-    title = "Изменение всех показателей по странам",
-    subtitle = "Каждый фасет - отдельный показатель Numbeo",
-    x = "Год",
-    y = "Значение показателя",
-    color = "Страна"
+plot_list <- lapply(levels(indicator_long$indicator), function(ind_name) {
+  ggplot(
+    indicator_long %>% filter(indicator == ind_name),
+    aes(x = year, y = value, color = country, group = country)
   ) +
-  theme_minimal(base_size = 11) +
-  theme(
-    legend.position = "bottom",
-    strip.text = element_text(face = "bold")
-  )
+    geom_line(linewidth = 0.9) +
+    geom_point(size = 1.5) +
+    labs(
+      title = ind_name,
+      x = "Год",
+      y = "Значение показателя",
+      color = "Страна"
+    ) +
+    theme_minimal(base_size = 11) +
+    theme(legend.position = "bottom")
+})
+
+for (p in plot_list) {
+  print(p)
+}
 ```
 
 ## Сводка по изменениям всех показателей
 
 ```{r}
-#| label: indicators-summary
-
 indicator_change <- selected_data %>%
   group_by(country) %>%
   arrange(year, .by_group = TRUE) %>%
