@@ -1,0 +1,172 @@
+---
+title: "Лабораторная работа 4. Музеи Санкт-Петербурга"
+format:
+  html:
+    toc: true
+    number-sections: true
+execute:
+  warning: false
+  message: false
+---
+
+## Цель работы
+
+С одной из страниц сайта `tonkosti.ru` собрать сведения о музеях Санкт-Петербурга и представить их в виде `data.frame`.
+
+Требуется получить:
+
+-   название музея;
+-   адрес;
+-   описание музея, если оно есть;
+-   ссылку на страницу музея, которая открывается по клику на фото или по названию.
+
+## Подготовка
+
+```{r}
+#| label: setup
+#| include: false
+
+# install.packages("rvest")
+
+library(rvest)
+library(xml2)
+library(dplyr)
+library(stringr)
+library(knitr)
+```
+
+## Загрузка страницы
+
+В качестве источника берем страницу со списком музеев Санкт-Петербурга.
+
+```{r}
+#| label: load-page
+
+page_num <- 1
+
+page_url <- if (page_num == 1) {
+  "https://tonkosti.ru/Музеи_Санкт-Петербурга"
+} else {
+  paste0("https://tonkosti.ru/Музеи_Санкт-Петербурга?page=", page_num)
+}
+
+page <- read_html(page_url)
+page
+```
+
+## Извлечение данных
+
+На странице названия музеев оформлены как ссылки в заголовках `h3`. Для каждого такого элемента:
+
+-   берем текст названия;
+-   берем `href` как ссылку на страницу музея;
+-   ищем адрес в ближайшем блоке;
+-   пытаемся найти описание;
+-   если описания нет, ставим `NA`.
+
+```{r}
+#| label: extract-data
+
+clean_text <- function(x) {
+  x <- str_squish(x)
+  x <- x[nzchar(x)]
+  x
+}
+
+extract_address <- function(lines) {
+  addr_idx <- which(str_detect(lines, "^Санкт-Петербург"))
+  if (length(addr_idx) == 0) {
+    return(NA_character_)
+  }
+  lines[addr_idx[1]]
+}
+
+extract_description <- function(lines, title_pos) {
+  if (is.na(title_pos) || title_pos >= length(lines)) {
+    return(NA_character_)
+  }
+
+  desc <- lines[(title_pos + 1):length(lines)]
+  desc <- desc[!str_detect(
+    desc,
+    "^(\\d+(?:[\\.,]\\d+)?\\s|\\d+ отзыв|Узнать больше|Реклама:|Самое-самое|самое-самое|Санкт-Петербург)"
+  )]
+  desc <- desc[nzchar(desc)]
+
+  if (length(desc) == 0) {
+    return(NA_character_)
+  }
+
+  paste(desc, collapse = " ")
+}
+
+get_item_block <- function(link_node) {
+  li_node <- xml_find_first(link_node, "ancestor::li[1]")
+  if (!inherits(li_node, "xml_missing")) {
+    return(li_node)
+  }
+
+  # Если структура страницы изменится, используем ближайшего общего родителя.
+  xml_parent(xml_parent(link_node))
+}
+
+title_links <- html_elements(page, "h3 a")
+titles <- html_text2(title_links) |> clean_text()
+hrefs <- html_attr(title_links, "href")
+hrefs <- url_absolute(hrefs, page_url)
+
+museum_rows <- lapply(seq_along(title_links), function(i) {
+  link_node <- title_links[[i]]
+  block_node <- get_item_block(link_node)
+
+  block_text <- html_text2(block_node)
+  lines <- str_split(block_text, "\n", simplify = FALSE)[[1]] |> clean_text()
+
+  title_pos <- match(titles[i], lines)
+  if (is.na(title_pos)) {
+    title_pos <- grep(titles[i], lines, fixed = TRUE)[1]
+  }
+
+  address <- extract_address(lines[seq_len(max(1, title_pos - 1))])
+  description <- extract_description(lines, title_pos)
+
+  data.frame(
+    museum_name = titles[i],
+    address = address,
+    description = description,
+    museum_link = hrefs[i],
+    stringsAsFactors = FALSE
+  )
+})
+
+museums_df <- bind_rows(museum_rows) %>%
+  distinct(museum_name, .keep_all = TRUE)
+
+museums_df
+```
+
+## Краткая проверка
+
+```{r}
+#| label: summary
+
+cat("Найдено музеев:", nrow(museums_df), "\n")
+cat("Заполненных описаний:", sum(!is.na(museums_df$description)), "\n")
+```
+
+## Таблица
+
+```{r}
+#| label: table-output
+
+kable(
+  museums_df,
+  caption = "Музеи Санкт-Петербурга со страницы tonkosti.ru"
+)
+```
+
+## Вывод
+
+В результате получена таблица, содержащая название музея, адрес, описание и ссылку на страницу музея.
+
+Если на карточке музея описание отсутствует, в соответствующем поле остается `NA`. Такой подход удобен, потому что позволяет сохранить всю структуру данных и при этом не терять записи.

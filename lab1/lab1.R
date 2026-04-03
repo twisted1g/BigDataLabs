@@ -103,4 +103,4 @@ europe_df
 
 america_df <- subset(oil_cost_sorted, Contenent == "Америка")
 america_df
-            
+              

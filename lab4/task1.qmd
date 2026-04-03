@@ -1,0 +1,423 @@
+---
+title: "Лабораторная работа 4. Рейтинг стран по уровню жизни"
+format:
+  html:
+    toc: true
+    number-sections: true
+execute:
+  warning: false
+  message: false
+---
+
+## Цель работы
+
+В этой работе собираются исторические данные о качестве жизни стран мира с сайта Numbeo за период с 2014 года до текущего года.
+
+Нужно:
+
+1.  собрать данные по 5 странам из списка варианта;
+2.  получить таблицу с рейтингом и показателями качества жизни;
+3.  построить графики изменения рейтинга и всех показателей во времени;
+4.  прокомментировать результат.
+
+Показатели Numbeo:
+
+-   `Rank`
+-   `Quality of Life Index`
+-   `Purchasing Power Index`
+-   `Safety Index`
+-   `Health Care Index`
+-   `Cost of Living Index`
+-   `Property Price to Income Ratio`
+-   `Traffic Commute Time Index`
+-   `Pollution Index`
+-   `Climate Index`
+
+Для интерпретации важно помнить:
+
+-   для `Quality of Life`, `Purchasing Power`, `Safety`, `Health Care`, `Climate` большее значение лучше;
+-   для `Cost of Living`, `Property Price to Income`, `Traffic Commute Time`, `Pollution` меньшее значение лучше;
+-   для `Rank` меньшее значение лучше.
+
+## Подготовка
+
+```{r}
+#| label: setup
+#| include: false
+
+#install.packages("rvest")
+
+library(rvest)
+library(dplyr)
+library(ggplot2)
+library(stringr)
+library(knitr)
+```
+
+```{r}
+#| label: params
+
+base_url <- "https://www.numbeo.com/quality-of-life/rankings_by_country.jsp?title=%s"
+current_year <- as.integer(format(Sys.Date(), "%Y"))
+years <- 2014:current_year
+
+# По варианту берем 5 стран из списка.
+selected_countries <- c("Australia", "Japan", "China", "India", "Indonesia")
+
+indicator_cols <- c(
+  "Rank",
+  "Quality of Life Index",
+  "Purchasing Power Index",
+  "Safety Index",
+  "Health Care Index",
+  "Cost of Living Index",
+  "Property Price to Income Ratio",
+  "Traffic Commute Time Index",
+  "Pollution Index",
+  "Climate Index"
+)
+
+indicator_labels_ru <- c(
+  Rank = "Место в рейтинге",
+  `Quality of Life Index` = "Индекс качества жизни",
+  `Purchasing Power Index` = "Индекс покупательной способности",
+  `Safety Index` = "Индекс безопасности",
+  `Health Care Index` = "Индекс здравоохранения",
+  `Cost of Living Index` = "Индекс стоимости жизни",
+  `Property Price to Income Ratio` = "Цена жилья / доход",
+  `Traffic Commute Time Index` = "Индекс времени в пути",
+  `Pollution Index` = "Индекс загрязнения",
+  `Climate Index` = "Климатический индекс"
+)
+
+indicator_vars <- c(
+  "rank_source",
+  "quality_of_life",
+  "purchasing_power",
+  "safety",
+  "health_care",
+  "cost_of_living",
+  "property_price_to_income",
+  "traffic_commute_time",
+  "pollution",
+  "climate"
+)
+
+indicator_vars_ru <- unname(indicator_labels_ru)
+```
+
+## Сбор данных
+
+Считываем таблицу с Numbeo по каждому году. Для этого используется `rvest::read_html()` и `rvest::html_table()`.
+
+```{r}
+#| label: read-data
+
+read_numbeo_year <- function(year) {
+  url <- sprintf(base_url, year)
+
+  page <- tryCatch(
+    read_html(url),
+    error = function(e) {
+      message(sprintf("Не удалось загрузить %s: %s", year, e$message))
+      return(NULL)
+    }
+  )
+
+  if (is.null(page)) {
+    return(NULL)
+  }
+
+  tables <- html_elements(page, "table")
+  if (length(tables) == 0) {
+    message(sprintf("На странице за %s год не найдена таблица.", year))
+    return(NULL)
+  }
+
+  parsed_tables <- lapply(tables, html_table, fill = TRUE)
+
+  scores <- vapply(parsed_tables, function(tbl) {
+    tbl_names <- str_squish(names(tbl))
+    sum(c("Country", "Quality of Life Index", "Purchasing Power Index") %in% tbl_names)
+  }, integer(1))
+
+  data <- parsed_tables[[which.max(scores)]]
+  names(data) <- str_squish(names(data))
+
+  needed <- c("Rank", "Country", indicator_cols[-1])
+  data <- data %>%
+    select(any_of(needed)) %>%
+    filter(!is.na(Country), Country != "", Country != "Country")
+
+  if (!all(c("Country", indicator_cols[-1]) %in% names(data))) {
+    message(sprintf("В таблице за %s год не хватает нужных столбцов.", year))
+    return(NULL)
+  }
+
+  if (!("Rank" %in% names(data))) {
+    data$Rank <- NA
+  }
+
+  data <- data %>%
+    rename(
+      rank_source = Rank,
+      country = Country,
+      quality_of_life = `Quality of Life Index`,
+      purchasing_power = `Purchasing Power Index`,
+      safety = `Safety Index`,
+      health_care = `Health Care Index`,
+      cost_of_living = `Cost of Living Index`,
+      property_price_to_income = `Property Price to Income Ratio`,
+      traffic_commute_time = `Traffic Commute Time Index`,
+      pollution = `Pollution Index`,
+      climate = `Climate Index`
+    ) %>%
+    mutate(
+      across(
+        c(
+          rank_source,
+          quality_of_life,
+          purchasing_power,
+          safety,
+          health_care,
+          cost_of_living,
+          property_price_to_income,
+          traffic_commute_time,
+          pollution,
+          climate
+        ),
+        ~ as.numeric(gsub(",", ".", as.character(.x), fixed = TRUE))
+      ),
+      year = year
+    ) %>%
+    arrange(desc(quality_of_life), country) %>%
+    mutate(rank_source = row_number())
+
+  data
+}
+
+all_data <- bind_rows(lapply(years, read_numbeo_year))
+if (nrow(all_data) == 0) {
+  stop("Не удалось собрать данные ни за один год.")
+}
+
+all_data <- all_data %>%
+  select(year, country, all_of(indicator_vars))
+
+available_years <- sort(unique(all_data$year))
+
+head(all_data)
+```
+
+```{r}
+#| label: availability
+
+cat("Загружены годы: ", paste(available_years, collapse = ", "), "\n")
+cat("Всего строк в общей таблице: ", nrow(all_data), "\n")
+```
+
+## Выборка по 5 странам
+
+```{r}
+#| label: selected-data
+
+selected_data <- all_data %>%
+  filter(country %in% selected_countries) %>%
+  arrange(country, year)
+
+if (nrow(selected_data) == 0) {
+  stop("Выбранные страны не найдены в загруженных данных.")
+}
+
+selected_data
+```
+
+```{r}
+#| label: missing-countries
+
+missing_countries <- setdiff(selected_countries, unique(selected_data$country))
+if (length(missing_countries) > 0) {
+  cat("Страны, которые не удалось найти хотя бы в одном году: ",
+      paste(missing_countries, collapse = ", "), "\n")
+} else {
+  cat("Все выбранные страны присутствуют во всех загруженных годах.\n")
+}
+```
+
+## Сводка по рейтингу
+
+В таблице ниже показано изменение позиции в рейтинге и индекса качества жизни от первого доступного года к последнему.
+
+```{r}
+#| label: rank-summary
+
+rank_summary <- selected_data %>%
+  group_by(country) %>%
+  arrange(year, .by_group = TRUE) %>%
+  summarise(
+    first_year = first(year),
+    last_year = last(year),
+    first_rank = first(rank_source),
+    last_rank = last(rank_source),
+    rank_change = first_rank - last_rank,
+    first_qol = first(quality_of_life),
+    last_qol = last(quality_of_life),
+    qol_change = last_qol - first_qol,
+    .groups = "drop"
+  ) %>%
+  arrange(first_rank)
+
+kable(rank_summary, caption = "Изменение рейтинга и качества жизни")
+```
+
+```{r}
+#| label: rank-comment
+
+best_rank <- rank_summary %>% slice_max(rank_change, n = 1, with_ties = FALSE)
+worst_rank <- rank_summary %>% slice_min(rank_change, n = 1, with_ties = FALSE)
+
+cat(
+  sprintf(
+    "Лучшее улучшение по месту в рейтинге показала страна %s: с %d места в %d году до %d места в %d году. ",
+    best_rank$country,
+    best_rank$first_rank,
+    best_rank$first_year,
+    best_rank$last_rank,
+    best_rank$last_year
+  ),
+  sprintf(
+    "Наибольшее ухудшение позиции у страны %s: с %d места до %d места.",
+    worst_rank$country,
+    worst_rank$first_rank,
+    worst_rank$last_rank
+  ),
+  "\n"
+)
+```
+
+## Рейтинг стран на одном графике
+
+Это основной график для сравнения 5 стран. Чем ниже линия, тем выше место в рейтинге.
+
+```{r}
+#| label: rank-plot
+
+ggplot(selected_data, aes(x = year, y = rank_source, color = country, group = country)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  scale_y_reverse() +
+  labs(
+    title = "Динамика рейтинга стран по уровню жизни",
+    subtitle = paste0("Numbeo, 2014 - ", max(available_years)),
+    x = "Год",
+    y = "Место в рейтинге",
+    color = "Страна"
+  ) +
+  theme_minimal(base_size = 12)
+```
+
+## Индекс качества жизни
+
+Дополнительно полезно отдельно смотреть общий `Quality of Life Index`.
+
+```{r}
+#| label: qol-plot
+
+ggplot(selected_data, aes(x = year, y = quality_of_life, color = country, group = country)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  labs(
+    title = "Динамика индекса качества жизни",
+    subtitle = paste0("Numbeo, 2014 - ", max(available_years)),
+    x = "Год",
+    y = "Индекс",
+    color = "Страна"
+  ) +
+  theme_minimal(base_size = 12)
+```
+
+## Все показатели
+
+Для всех индикаторов удобнее всего использовать фасетный график: у каждого показателя своя шкала, поэтому графики не мешают друг другу.
+
+```{r}
+#| label: long-data
+
+make_long_block <- function(data, var, label) {
+  data.frame(
+    year = data$year,
+    country = data$country,
+    indicator = label,
+    value = data[[var]],
+    stringsAsFactors = FALSE
+  )
+}
+
+indicator_long <- bind_rows(
+  make_long_block(selected_data, "rank_source", indicator_labels_ru["Rank"]),
+  make_long_block(selected_data, "quality_of_life", indicator_labels_ru["Quality of Life Index"]),
+  make_long_block(selected_data, "purchasing_power", indicator_labels_ru["Purchasing Power Index"]),
+  make_long_block(selected_data, "safety", indicator_labels_ru["Safety Index"]),
+  make_long_block(selected_data, "health_care", indicator_labels_ru["Health Care Index"]),
+  make_long_block(selected_data, "cost_of_living", indicator_labels_ru["Cost of Living Index"]),
+  make_long_block(selected_data, "property_price_to_income", indicator_labels_ru["Property Price to Income Ratio"]),
+  make_long_block(selected_data, "traffic_commute_time", indicator_labels_ru["Traffic Commute Time Index"]),
+  make_long_block(selected_data, "pollution", indicator_labels_ru["Pollution Index"]),
+  make_long_block(selected_data, "climate", indicator_labels_ru["Climate Index"])
+)
+
+indicator_long$indicator <- factor(indicator_long$indicator, levels = indicator_vars_ru)
+
+head(indicator_long, 20)
+```
+
+```{r}
+#| label: indicators-plot
+
+ggplot(indicator_long, aes(x = year, y = value, color = country, group = country)) +
+  geom_line(linewidth = 0.9) +
+  geom_point(size = 1.5) +
+  facet_wrap(~ indicator, scales = "free_y", ncol = 2) +
+  labs(
+    title = "Изменение всех показателей по странам",
+    subtitle = "Каждый фасет - отдельный показатель Numbeo",
+    x = "Год",
+    y = "Значение показателя",
+    color = "Страна"
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(
+    legend.position = "bottom",
+    strip.text = element_text(face = "bold")
+  )
+```
+
+## Сводка по изменениям всех показателей
+
+```{r}
+#| label: indicators-summary
+
+indicator_change <- selected_data %>%
+  group_by(country) %>%
+  arrange(year, .by_group = TRUE) %>%
+  summarise(
+    across(
+      all_of(indicator_vars),
+      list(first = first, last = last, change = ~ last(.x) - first(.x))
+    ),
+    .groups = "drop"
+  )
+
+kable(indicator_change, caption = "Первое, последнее и изменение значений показателей")
+```
+
+## Вывод
+
+После построения графиков можно сделать следующие наблюдения:
+
+-   по графику рейтинга видно, как менялись места стран относительно друг друга;
+-   график `Quality of Life Index` показывает общую динамику качества жизни;
+-   фасетный график позволяет отдельно анализировать каждый показатель и сравнивать тренды между странами;
+-   для показателей с отрицательной интерпретацией значения важно читать наоборот: уменьшение `Pollution`, `Traffic Commute Time`, `Cost of Living` и `Property Price to Income` означает улучшение.
+
+Если нужно, в отчете можно отдельно подчеркнуть страны с лучшей динамикой по месту в рейтинге и по общему индексу качества жизни.

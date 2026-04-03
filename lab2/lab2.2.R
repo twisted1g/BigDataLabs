@@ -94,27 +94,31 @@ lapply(browsers, function(browser) {
 
 # Боксплоты
 
-par(mfrow = c(1, 5))
-lapply(browsers, function(browser) {
-  boxplot(chrome_users[[browser]],
-        las = 2,
-        col = "blue",
-        ylab = "Оценка",
-        ylim = c(0, 10),
-        xlab = browser)
-})
 
-par(mfrow = c(1, 5))
-lapply(browsers, function(browser) {
-  boxplot(chrome_users[[browser]],
+dev.new(width = 10, height = 7)
+par(mar = c(10, 4, 6, 2))
+
+boxplot(chrome_users,
         las = 2,
-        col = "purple",
-        ylab = "Оценка",
+        col = rainbow(length(chrome_users)),
+        main = "Оценки пользователей Chrome",
+        ylim = c(0, 10),
+        ylab = "Оценки",
+        xlab = browser)
+
+
+boxplot(not_chrome_users,
+        las = 2,
+        col = rainbow(length(chrome_users)+3),
+        main = "Оценки не пользователей Chrome",
         ylim = c(0, 10),
         xlab = browser)
-})
+
 
 par(mfrow = c(1, 1))
+
+colMeans(chrome_users) %>% sort(decreasing = TRUE)
+colMeans(not_chrome_users) %>% sort(decreasing = TRUE)
 
 # 5. Продемонстрировать: слияние таблиц, 
 # добавление строк, исключение переменных,

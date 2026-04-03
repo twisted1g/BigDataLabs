@@ -19,7 +19,10 @@ library(dplyr)
 library(zoo)
 
 setwd("~/Code/r/BigDataLabs/lab3")
+
 ```
+
+\
 
 ## 1. Выбрать данные согласно варианту по указанным 7-ми странам, освободить от NA.
 

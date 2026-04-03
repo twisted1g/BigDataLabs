@@ -8,6 +8,8 @@ setwd("~/Code/r/BigDataLabs/lab3")
 students_data <- readRDS("./students_data.rds")
 students_data
 
+countrycode
+
 # Подготовка данных
 # "China"и "India" 
 
